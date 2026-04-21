@@ -1,91 +1,63 @@
-import sys, os
+import sys, os, json, urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import streamlit as st
-import urllib.error
 
 try:
+    from shule_ai.tutor import ShuleTutor
     from shule_ai.subjects import KCPE_SUBJECTS, KCSE_SUBJECTS, ALL_SUBJECTS
     HAS_SHULE = True
 except ImportError:
     HAS_SHULE = False
 
-# ── AI helper — Gemini first (free tier), Anthropic fallback ────────────
-_GEMINI_BASE = "https://generativelanguage.googleapis.com"
-_GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"]
 
-def _get_gemini_key():
+def _get_api_key():
+    """Gemini key from Streamlit secrets or env. Free at aistudio.google.com"""
     try:
-        k = st.secrets.get("GOOGLE_API_KEY") or st.secrets.get("GEMINI_API_KEY")
-        if k: return k
+        import streamlit as st
+        k = (st.secrets.get("GOOGLE_API_KEY")
+             or st.secrets.get("GEMINI_API_KEY"))
+        if k:
+            return k
     except Exception:
         pass
-    return os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY", "")
+    return (os.environ.get("GOOGLE_API_KEY")
+            or os.environ.get("GEMINI_API_KEY", ""))
 
-def _get_anthropic_key():
-    try:
-        k = st.secrets.get("ANTHROPIC_API_KEY")
-        if k: return k
-    except Exception:
-        pass
-    return os.environ.get("ANTHROPIC_API_KEY", "")
 
 def _call_gemini(system: str, user: str, api_key: str) -> str:
-    import urllib.request as _req, json as _json
+    """Call Gemini REST API directly — no SDK needed. Free tier works."""
+    _BASE = "https://generativelanguage.googleapis.com"
+    models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"]
     payload = {
-        "contents": [{"role": "user", "parts": [{"text": f"{system}\n\n{user}"}]}],
-        "generationConfig": {"maxOutputTokens": 1024, "temperature": 0.3},
+        "system_instruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "generationConfig": {"maxOutputTokens": 800, "temperature": 0.3},
     }
-    for model in _GEMINI_MODELS:
-        url = f"{_GEMINI_BASE}/v1beta/models/{model}:generateContent?key={api_key}"
+    last_err = ""
+    for model in models:
+        url = f"{_BASE}/v1beta/models/{model}:generateContent?key={api_key}"
+        req = urllib.request.Request(
+            url, data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"}, method="POST")
         try:
-            r = _req.urlopen(_req.Request(url,
-                data=_json.dumps(payload).encode(),
-                headers={"Content-Type": "application/json"},
-                method="POST"), timeout=20)
-            d = _json.loads(r.read())
-            return d["candidates"][0]["content"]["parts"][0]["text"]
+            with urllib.request.urlopen(req, timeout=20) as r:
+                data = json.loads(r.read())
+            return data["candidates"][0]["content"]["parts"][0]["text"]
         except urllib.error.HTTPError as e:
+            last_err = f"HTTP {e.code}"
             if e.code in (400, 404):
-                continue
+                continue   # try next model
             raise
-    raise RuntimeError("All Gemini models unavailable")
+        except Exception as e:
+            last_err = str(e)
+            continue
+    raise RuntimeError(f"All Gemini models failed. Last error: {last_err}")
 
-def _call_anthropic(system: str, user: str, api_key: str) -> str:
-    import anthropic as _ant
-    client = _ant.Anthropic(api_key=api_key)
-    msg = client.messages.create(
-        model="claude-haiku-4-5-20251001", max_tokens=1024,
-        system=system,
-        messages=[{"role": "user", "content": user}])
-    return msg.content[0].text
-
-def ai_call(system: str, user: str,
-            gemini_key: str = "", anthropic_key: str = "") -> str:
-    """Try Gemini first (free tier), fall back to Anthropic."""
-    gkey = gemini_key or _get_gemini_key()
-    akey = anthropic_key or _get_anthropic_key()
-    if gkey:
-        try:
-            return _call_gemini(system, user, gkey)
-        except Exception:
-            pass
-    if akey:
-        return _call_anthropic(system, user, akey)
-    raise RuntimeError("No AI key available")
-
-def has_any_key() -> bool:
-    return bool(_get_gemini_key() or _get_anthropic_key())
-
-def which_provider() -> str:
-    if _get_gemini_key(): return "gemini"
-    if _get_anthropic_key(): return "anthropic"
-    return "none"
-# ────────────────────────────────────────────────────────────────────────
 
 st.set_page_config(page_title="ShuleAI", page_icon="📚", layout="centered")
 st.markdown("""<style>
     .main > div { padding: 0.5rem 0.8rem 2rem; }
-    .stTextInput > div > div > input { font-size: 1rem; }
     h1 { font-size: 1.5rem !important; }
 </style>""", unsafe_allow_html=True)
 
@@ -96,99 +68,87 @@ if not HAS_SHULE:
 st.title("📚 ShuleAI")
 st.caption("Msaidizi wako wa masomo · Your AI study companion")
 
-# ── Sidebar ────────────────────────────────────────────
+api_key = _get_api_key()
+
 with st.sidebar:
     st.subheader("Settings")
-    provider = which_provider()
-    if provider != "none":
-        st.success(f"✅ AI ready ({provider.title()})")
-        user_gemini_key = ""
-        user_ant_key    = ""
+    if api_key:
+        st.success("✅ AI tutor ready")
     else:
         st.markdown(
-            "**Activate the AI tutor:**\n\n"
-            "Use a **free Google Gemini key** — no credit card needed.\n\n"
-            "1. Go to [aistudio.google.com](https://aistudio.google.com/apikey)\n"
-            "2. Click **Get API key** (free)\n"
-            "3. Paste it below"
+            "**Activate the AI tutor — it's free:**\n\n"
+            "1. Go to [aistudio.google.com](https://aistudio.google.com)\n"
+            "2. Sign in with Google\n"
+            "3. Click **Get API key**\n"
+            "4. Paste it below"
         )
-        user_gemini_key = st.text_input("Google Gemini key (free):",
-            type="password", placeholder="AIza...",
-            help="Free at aistudio.google.com — no credit card needed.")
-        st.caption("— or use Anthropic —")
-        user_ant_key = st.text_input("Anthropic key (optional):",
-            type="password", placeholder="sk-ant-...",
-            help="Alternative to Gemini. Get one at console.anthropic.com")
+        api_key = st.text_input("Google AI / Gemini key:",
+                                 type="password",
+                                 placeholder="AIza...",
+                                 help="Free at aistudio.google.com. Never stored or logged here.")
 
     st.divider()
-    level    = st.radio("Level:", ["KCPE", "KCSE"], horizontal=True)
+    level    = st.radio("Exam level:", ["KCPE", "KCSE"], horizontal=True)
     subjects = KCPE_SUBJECTS if level == "KCPE" else KCSE_SUBJECTS
     subject  = st.selectbox("Subject:", ["(All subjects)"] + list(subjects.keys()))
     language = st.radio("Language:", ["English", "Kiswahili"], horizontal=True)
     if st.button("🔄 New session", use_container_width=True):
-        st.session_state.pop("messages", None)
+        for k in ["messages"]: st.session_state.pop(k, None)
         st.rerun()
 
-active_gemini = user_gemini_key or _get_gemini_key()
-active_ant    = user_ant_key    or _get_anthropic_key()
-
-if not active_gemini and not active_ant:
+if not api_key:
     st.info(
-        "👋 Welcome to ShuleAI — a free AI tutor for Kenya students "
-        "(KCPE · KCSE · CBC syllabus).\n\n"
-        "Add a **free Google Gemini key** in the sidebar to start studying. "
-        "No credit card needed — just a Google account."
+        "👋 Welcome to ShuleAI — a free AI study companion for Kenya students.\n\n"
+        "Get a **free** Google AI key at [aistudio.google.com](https://aistudio.google.com) "
+        "— no credit card required."
     )
+    st.caption("Covers KCPE and KCSE · KICD curriculum · English and Kiswahili")
     st.stop()
 
-TUTOR_SYSTEM = """You are ShuleAI, a friendly AI tutor for Kenyan KCPE and KCSE students.
+SYSTEM = """You are ShuleAI, a friendly AI tutor for Kenya students preparing for KCPE and KCSE.
 Rules:
-1. Never just give answers — explain the concept first, then the solution.
-2. Use the Kenya KICD curriculum as your reference.
-3. If asked in Kiswahili or subject is Kiswahili/Social Studies, respond bilingually (English + Kiswahili).
-4. Keep language simple and age-appropriate (ages 8–18).
-5. For maths and science, always show step-by-step working.
-6. Be encouraging. Acknowledge effort.
-7. Stay strictly within the Kenya curriculum.
-Safe content only — ages 8–18."""
+1. Never just give the answer — explain the concept first, then show the solution
+2. Use the KICD Kenya curriculum as your frame of reference
+3. For Kiswahili questions or when asked in Kiswahili, respond bilingually (EN + SW)
+4. Keep language simple and age-appropriate (primary and secondary school level)
+5. For maths and sciences, always show step-by-step working
+6. Encourage students — be warm and supportive
+7. Stay strictly within the Kenya curriculum
+8. Do not do assignments or exams for students — teach the method"""
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-subj_arg  = subject if subject != "(All subjects)" else None
-lang_note = " [Respond bilingually EN+SW]" if language == "Kiswahili" else ""
-context   = f"[Level: {level}]" + (f" [Subject: {subj_arg}]" if subj_arg else "") + lang_note
-
+# Quick actions
 cols = st.columns(3)
 if cols[0].button("📝 Practice questions", use_container_width=True):
-    subj_label = subj_arg or "Mathematics"
-    with st.spinner("Generating..."):
+    subj = subject if subject != "(All subjects)" else "Mathematics"
+    with st.spinner("Generating questions..."):
         try:
-            ans = ai_call(TUTOR_SYSTEM,
-                f"Generate 5 practice questions on mixed topics for {subj_label} {level}. "
-                f"Show worked solutions after all questions.",
-                active_gemini, active_ant)
+            ans = _call_gemini(SYSTEM,
+                f"Generate 5 {level} practice questions on {subj}, mixed topics. "
+                f"Number them. Then provide full worked solutions with mark allocation.",
+                api_key)
             st.session_state.messages.append(("assistant", ans))
         except Exception:
-            st.error("Could not generate questions. Please try again.")
+            st.error("Could not generate questions. Please check your API key.")
 
 if cols[1].button("💡 Explain concept", use_container_width=True):
     st.session_state.messages.append(("assistant",
-        "Type the concept below and I'll explain it step by step. "
-        "E.g. *photosynthesis*, *quadratic equations*, *mapwork skills*."))
+        "Sure! Type the concept below, e.g. *photosynthesis* or *quadratic equations*."))
 
 if cols[2].button("📖 Revision tips", use_container_width=True):
-    subj_label = subj_arg or "all subjects"
+    subj_label = subject if subject != "(All subjects)" else "all KCSE subjects"
     with st.spinner("Thinking..."):
         try:
-            tips = ai_call(TUTOR_SYSTEM,
-                f"Give me 5 targeted revision tips for {subj_label} {level} in Kenya.",
-                active_gemini, active_ant)
+            tips = _call_gemini(SYSTEM,
+                f"Give 5 targeted revision tips for {subj_label} {level} in Kenya.",
+                api_key)
             st.session_state.messages.append(("assistant", tips))
         except Exception:
-            st.error("Could not load revision tips.")
+            st.error("Could not load tips. Please try again.")
 
-for role, msg in st.session_state.messages[-10:]:
+for role, msg in st.session_state.get("messages", [])[-10:]:
     with st.chat_message(role):
         st.markdown(msg)
 
@@ -200,15 +160,24 @@ if user_input:
     with st.chat_message("assistant"):
         with st.spinner("Nafikiri... · Thinking..."):
             try:
-                answer = ai_call(TUTOR_SYSTEM, f"{context}\n\n{user_input}",
-                                 active_gemini, active_ant)
-            except RuntimeError:
-                answer = ("Your API key doesn't seem to be working. "
-                          "Please check it in the sidebar and try again.")
+                lang_note = " Respond bilingually in English and Kiswahili." if language == "Kiswahili" else ""
+                subj_note = f" Subject: {subject}." if subject != "(All subjects)" else ""
+                answer = _call_gemini(SYSTEM,
+                    f"[{level}]{subj_note}{lang_note}\n\n{user_input}",
+                    api_key)
+            except urllib.error.HTTPError as e:
+                if e.code == 400:
+                    answer = "That question couldn't be processed. Please try rephrasing it."
+                elif e.code == 403:
+                    answer = "API key not recognised. Please check your key in the sidebar."
+                elif e.code == 429:
+                    answer = "Too many requests — please wait a moment and try again."
+                else:
+                    answer = "Something went wrong. Please try again."
             except Exception:
-                answer = "Something went wrong. Please try again."
+                answer = "Something went wrong. Please try again — if it continues, contact contact@aikungfu.dev"
         st.markdown(answer)
     st.session_state.messages.append(("assistant", answer))
 
 st.divider()
-st.caption("© 2026 Gabriel Mahia · KICD aligned · [GitHub](https://github.com/gabrielmahia/shule-ai) · Free to use")
+st.caption("© 2026 Gabriel Mahia · KICD aligned · [GitHub](https://github.com/gabrielmahia/shule-ai) · Powered by Google Gemini · Free to use")
