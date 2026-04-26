@@ -3,7 +3,7 @@
 > AI tutor for KCPE and KCSE students. CBC syllabus. Answers in Kiswahili and English. Runs on any phone with a browser — no app install required.
 
 [![License: CC BY-NC-ND 4.0](https://img.shields.io/badge/License-CC%20BY--NC--ND%204.0-lightgrey.svg)](LICENSE)
-[![Streamlit](https://img.shields.io/badge/Streamlit-Live-red)](https://shule-ai.streamlit.app)
+[![Streamlit](https://img.shields.io/badge/Streamlit-Live-red)](https://shuleniai.streamlit.app)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://python.org)
 
 ## What it does
@@ -21,7 +21,7 @@ ShuleAI is a free AI study companion grounded in the Kenya Institute of Curricul
 
 ## Live demo
 
-🌐 [shule-ai.streamlit.app](https://shule-ai.streamlit.app)
+🌐 [shule-ai.streamlit.app](https://shuleniai.streamlit.app)
 
 ## Quickstart
 
