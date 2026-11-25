@@ -4,7 +4,7 @@
   "project": "shule-ai",
   "stable_branch": "main",
   "integration_branch": "main",
-  "purpose": "ShuleAI — AI tutor for Kenya curriculum. KCPE/KCSE prep, CBC syllabus, answers in Kiswahili and English. Runs on any phone. Open-source.",
+  "purpose": "ShuleAI — AI tutor for Kenya curriculum. KCPE/KCSE prep, CBC syllabus, answers in Kiswahili and English. Runs on any phone. Source-available (PolyForm Noncommercial).",
   "cold_start": [
     "AGENTS.md",
     "README.md"

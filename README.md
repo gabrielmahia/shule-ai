@@ -2,7 +2,7 @@
 
 > AI tutor for KCPE and KCSE students. CBC syllabus. Answers in Kiswahili and English. Runs on any phone with a browser — no app install required.
 
-[![License: CC BY-NC-ND 4.0](https://img.shields.io/badge/License-CC%20BY--NC--ND%204.0-lightgrey.svg)](LICENSE)
+[![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
 [![Streamlit](https://img.shields.io/badge/Streamlit-Live-red)](https://shuleniai.streamlit.app)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://python.org)
 
@@ -85,5 +85,5 @@ Interested in deploying ShuleAI in your school, NGO, or county? [contact@aikungf
 ## IP & Collaboration
 
 © 2026 Gabriel Mahia · [contact@aikungfu.dev](mailto:contact@aikungfu.dev)
-License: CC BY-NC-ND 4.0
+License: PolyForm Noncommercial 1.0.0
 Not affiliated with KICD, KNEC, or the Kenya Ministry of Education.
